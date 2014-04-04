@@ -27,6 +27,7 @@ import junit.framework.Test;
 import junit.framework.TestSuite;
 
 import org.pentaho.di.core.database.DatabaseTest;
+import org.pentaho.di.core.database.PoolableDataSourceTest;
 import org.pentaho.di.core.parameters.ParameterSimpleTransTest;
 import org.pentaho.di.core.row.ValueDataUtilTest;
 import org.pentaho.di.core.util.StringEvaluatorTest;
@@ -103,6 +104,7 @@ public class AllRegressionTests {
     suite.addTest( new JUnit4TestAdapter( GPLoadTest.class ) );
     suite.addTest( new JUnit4TestAdapter( TipsDialogTest.class ) );
     suite.addTest( new JUnit4TestAdapter( TransExecutorTest.class ) );
+    suite.addTest( new JUnit4TestAdapter( PoolableDataSourceTest.class ) );
 
     // Temporarily disable this test, it never worked on Windows or Unix so
     // it doesn't make sense executing it for the moment.

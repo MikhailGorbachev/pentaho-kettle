@@ -198,12 +198,6 @@ public abstract class BaseDatabaseMeta implements Cloneable, DatabaseInterface {
       "defaultCatalog", null, "The default catalog of connections created by this pool." ),
 
     new DatabaseConnectionPoolParameter(
-      "initialSize", "0", "The initial number of connections that are created when the pool is started." ),
-    new DatabaseConnectionPoolParameter(
-      "maxActive", "8",
-      "The maximum number of active connections that can be allocated from this pool at the same time, "
-        + "or non-positive for no limit." ),
-    new DatabaseConnectionPoolParameter(
       "maxIdle", "8", "The maximum number of connections that can remain idle in the pool, "
         + "without extra ones being released, or negative for no limit." ),
     new DatabaseConnectionPoolParameter(
