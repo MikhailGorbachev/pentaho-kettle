@@ -324,6 +324,14 @@ public class RemoteStep implements Cloneable, XMLInterface, Comparable<RemoteSte
           // Accept the socket, create a connection
           // This blocks until something comes through...
           //
+         /* long totalWait = 0L;
+          long startTime = System.currentTimeMillis();
+          while ( serverSocket.isClosed() && totalWait < 300000 ) {
+            Thread.sleep( 10000 ); // wait 10 seconds, try again...
+            totalWait = System.currentTimeMillis() - startTime;
+          }   */
+          System.err.println(baseStep+ "=baseStep beforeAccept openWriterSocket() " + serverSocket + " isClosed() " + serverSocket.isClosed() + "isBound()" + serverSocket.isBound()  );
+
           socket = serverSocket.accept();
 
           // Create the output stream...
@@ -433,6 +441,9 @@ public class RemoteStep implements Cloneable, XMLInterface, Comparable<RemoteSte
           socket.shutdownInput();
         }
         if ( socket != null && !socket.isClosed() ) {
+          System.err.println(baseStep+ "=baseStep RemoteStep cleanup() forserversocket " + serverSocket + " isClosed() " + serverSocket.isClosed() + "isBound()" + serverSocket.isBound()  );
+          System.err.println(baseStep+ "=baseStep RemoteStep cleanup() for client socket " + socket + " isClosed() " + socket.isClosed() + "isBound()" + socket.isBound()  );
+
           socket.close();
         }
 
@@ -832,6 +843,8 @@ public class RemoteStep implements Cloneable, XMLInterface, Comparable<RemoteSte
         socket.close();
       }
       if ( serverSocket != null ) {
+        System.err.println(baseStep+ "=baseStep RemoteStep finalize() forserversocket " + serverSocket + " isClosed() " + serverSocket.isClosed() + "isBound()" + serverSocket.isBound()  );
+
         serverSocket.close();
       }
     } catch ( IOException e ) {

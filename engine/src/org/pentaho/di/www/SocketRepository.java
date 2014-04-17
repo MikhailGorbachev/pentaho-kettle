@@ -69,7 +69,11 @@ public class SocketRepository {
       // mc: It sucks and blows at the same time that we have to do this but I couldn't find another solution.
       //
       try {
+        System.err.println( "open socket beforebind open ServerSocket() " + serverSocket + " isClosed() " + serverSocket.isClosed() + "isBound()" + serverSocket.isBound()  );
+
         serverSocket.bind( new InetSocketAddress( port ) );
+        System.err.println( "open socket afterBind open ServerSocket() " + serverSocket + " isClosed() " + serverSocket.isClosed() + "isBound()" + serverSocket.isBound()  );
+
       } catch ( BindException e ) {
         long totalWait = 0L;
         long startTime = System.currentTimeMillis();
@@ -94,6 +98,8 @@ public class SocketRepository {
           totalWait = System.currentTimeMillis() - startTime;
         }
         if ( !serverSocket.isBound() ) {
+          System.err.println( "in bound close exception open ServerSocket() " + entry.getServerSocket() + " isClosed() " + entry.getServerSocket().isClosed() + "isBound()" + entry.getServerSocket().isBound()  );
+
           serverSocket.close();
           throw ioException;
         }
@@ -127,6 +133,8 @@ public class SocketRepository {
   public synchronized void releaseSocket( int port ) throws IOException {
 
     SocketRepositoryEntry entry = socketMap.get( port );
+    System.err.println( "release socket releaseSocket() " + entry.getServerSocket() + " isClosed() " + entry.getServerSocket().isClosed() + "isBound()" + entry.getServerSocket().isBound()  );
+
     if ( entry == null ) {
       throw new IOException( "Port to close was not found in the Carte socket repository!" );
     }
@@ -162,6 +170,7 @@ public class SocketRepository {
       ServerSocket serverSocket = entry.getServerSocket();
       try {
         if ( serverSocket != null ) {
+          System.err.println( "close socket and remove from entry  closeAll() " + serverSocket + " isClosed() " + serverSocket.isClosed() + "isBound()" + serverSocket.isBound()  );
           serverSocket.close();
           iterator.remove();
         }
@@ -173,6 +182,7 @@ public class SocketRepository {
 
   protected void finalize() throws Throwable {
     try {
+      System.err.println( "finalize called for  " + log.getLogChannelId() );
       closeAll();
     } catch ( Exception e ) {
       // Ignore errors
