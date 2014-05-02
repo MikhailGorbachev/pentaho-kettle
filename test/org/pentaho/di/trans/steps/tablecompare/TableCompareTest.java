@@ -58,7 +58,7 @@ public class TableCompareTest {
     db.disconnect();
   }
 
-  static final String schema = "public";
+  static final String schema = "PUBLIC";
 
   static String ehlkd = "ErrorHandlingKeyDescIn";
   static String ehlrvi = "ErrorHandlingRefValueIn";
