@@ -2200,4 +2200,14 @@ public abstract class BaseDatabaseMeta implements Cloneable, DatabaseInterface {
     }
     return fieldname;
   }
+
+  @Override
+  public boolean getRequiresDatabaseNameWhenNotPartitioned() {
+    return true;
+  }
+
+  @Override
+  public void addDefaultOptions() {
+
+  }
 }
