@@ -350,15 +350,113 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
     return null;
   }
 
-  public boolean processRow( StepMetaInterface smi, StepDataInterface sdi ) throws KettleException {
-    meta = (DatabaseLookupMeta) smi;
-    data = (DatabaseLookupData) sdi;
+  private void determineFieldsTypesQueryingDb() throws KettleException {
+    final String[] keyFields = meta.getTableKeyField();
+    data.keytypes = new int[ keyFields.length];
 
+    String schemaTable =
+      meta.getDatabaseMeta().getQuotedSchemaTableCombination(
+        environmentSubstitute( meta.getSchemaName() ), environmentSubstitute( meta.getTablename() ) );
+
+    RowMetaInterface fields = data.db.getTableFields( schemaTable );
+    if ( fields != null ) {
+      // Fill in the types...
+      for ( int i = 0; i < keyFields.length; i++ ) {
+        ValueMetaInterface key = fields.searchValueMeta( keyFields[i] );
+        if ( key != null ) {
+          data.keytypes[i] = key.getType();
+        } else {
+          throw new KettleStepException( BaseMessages.getString(
+            PKG, "DatabaseLookup.ERROR0001.FieldRequired5.Exception" )
+            + keyFields[ i ]
+            + BaseMessages.getString( PKG, "DatabaseLookup.ERROR0001.FieldRequired6.Exception" ) );
+        }
+      }
+
+      final String[] returnFields = meta.getReturnValueField();
+      final int returnFieldsOffset = getInputRowMeta().size();
+      for ( int i = 0; i < returnFields.length; i++ ) {
+        ValueMetaInterface returnValueMeta = fields.searchValueMeta( returnFields[ i ] );
+        if ( returnValueMeta != null ) {
+          ValueMetaInterface v = data.outputRowMeta.getValueMeta( returnFieldsOffset + i );
+          if ( v.getType() != returnValueMeta.getType() ) {
+            ValueMetaInterface clone = returnValueMeta.clone();
+            clone.setName( v.getName() );
+            data.outputRowMeta.setValueMeta( returnFieldsOffset + i, clone );
+          }
+        }
+      }
+    } else {
+      throw new KettleStepException( BaseMessages.getString(
+        PKG, "DatabaseLookup.ERROR0002.UnableToDetermineFieldsOfTable" )
+        + schemaTable + "]" );
+    }
+  }
+
+  private void initNullIf() throws KettleException {
+    final String[] returnFields = meta.getReturnValueField();
+
+    data.nullif = new Object[ returnFields.length];
+
+    for ( int i = 0; i < returnFields.length; i++ ) {
+      if ( !Const.isEmpty( meta.getReturnValueDefault()[ i ] ) ) {
+        ValueMetaInterface stringMeta = new ValueMeta( "string", ValueMetaInterface.TYPE_STRING );
+        ValueMetaInterface returnMeta = data.outputRowMeta.getValueMeta( i + getInputRowMeta().size() );
+        data.nullif[ i ] = returnMeta.convertData( stringMeta, meta.getReturnValueDefault()[ i ] );
+      } else {
+        data.nullif[ i ] = null;
+      }
+    }
+  }
+
+  private void initLookupMeta() throws KettleException {
+    // Count the number of values in the lookup as well as the metadata to send along with it.
+    //
+    data.lookupMeta = new RowMeta();
+
+    for ( int i = 0; i < meta.getStreamKeyField1().length; i++ ) {
+      if ( data.keynrs[ i ] >= 0 ) {
+        ValueMetaInterface inputValueMeta = getInputRowMeta().getValueMeta( data.keynrs[ i ] );
+
+        // Try to convert type if needed in a clone, we don't want to
+        // change the type in the original row
+        //
+        ValueMetaInterface value = ValueMetaFactory.cloneValueMeta( inputValueMeta, data.keytypes[ i ] );
+
+        data.lookupMeta.addValueMeta( value );
+      }
+      if ( data.keynrs2[ i ] >= 0 ) {
+        ValueMetaInterface inputValueMeta = getInputRowMeta().getValueMeta( data.keynrs2[ i ] );
+
+        // Try to convert type if needed in a clone, we don't want to
+        // change the type in the original row
+        //
+        ValueMetaInterface value = ValueMetaFactory.cloneValueMeta( inputValueMeta, data.keytypes[ i ] );
+
+        data.lookupMeta.addValueMeta( value );
+      }
+    }
+  }
+
+  private void initReturnMeta() {
+    // We also want to know the metadata of the return values beforehand (null handling)
+    data.returnMeta = new RowMeta();
+
+    for ( int i = 0; i < meta.getReturnValueField().length; i++ ) {
+      ValueMetaInterface v = data.outputRowMeta.getValueMeta( getInputRowMeta().size() + i ).clone();
+      data.returnMeta.addValueMeta( v );
+    }
+  }
+
+  public boolean processRow( StepMetaInterface smi, StepDataInterface sdi ) throws KettleException {
     Object[] r = getRow(); // Get row from input rowset & set row busy!
     if ( r == null ) { // no more input to be expected...
       setOutputDone();
       return false;
     }
+
+    meta = (DatabaseLookupMeta) smi;
+    data = (DatabaseLookupData) sdi;
 
     if ( first ) {
       first = false;
@@ -376,9 +474,10 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
       }
 
       data.db.setLookup(
-        environmentSubstitute( meta.getSchemaName() ), environmentSubstitute( meta.getTablename() ), meta
-          .getTableKeyField(), meta.getKeyCondition(), meta.getReturnValueField(), meta
-          .getReturnValueNewName(), meta.getOrderByClause(), meta.isFailingOnMultipleResults() );
+        environmentSubstitute( meta.getSchemaName() ), environmentSubstitute( meta.getTablename() ),
+        meta.getTableKeyField(), meta.getKeyCondition(), meta.getReturnValueField(),
+        meta.getReturnValueNewName(), meta.getOrderByClause(), meta.isFailingOnMultipleResults()
+      );
 
       // lookup the values!
       if ( log.isDetailed() ) {
@@ -416,89 +515,13 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
         }
       }
 
-      data.nullif = new Object[meta.getReturnValueField().length];
+      determineFieldsTypesQueryingDb();
 
-      for ( int i = 0; i < meta.getReturnValueField().length; i++ ) {
-        ValueMetaInterface stringMeta = new ValueMeta( "string", ValueMetaInterface.TYPE_STRING );
-        ValueMetaInterface returnMeta = data.outputRowMeta.getValueMeta( i + getInputRowMeta().size() );
+      initNullIf();
 
-        if ( !Const.isEmpty( meta.getReturnValueDefault()[i] ) ) {
-          data.nullif[i] = returnMeta.convertData( stringMeta, meta.getReturnValueDefault()[i] );
-        } else {
-          data.nullif[i] = null;
-        }
-      }
+      initLookupMeta();
 
-      // Determine the types...
-      data.keytypes = new int[meta.getTableKeyField().length];
-      String schemaTable =
-        meta.getDatabaseMeta().getQuotedSchemaTableCombination(
-          environmentSubstitute( meta.getSchemaName() ), environmentSubstitute( meta.getTablename() ) );
-      RowMetaInterface fields = data.db.getTableFields( schemaTable );
-      if ( fields != null ) {
-        // Fill in the types...
-        for ( int i = 0; i < meta.getTableKeyField().length; i++ ) {
-          ValueMetaInterface key = fields.searchValueMeta( meta.getTableKeyField()[i] );
-          if ( key != null ) {
-            data.keytypes[i] = key.getType();
-          } else {
-            throw new KettleStepException( BaseMessages.getString(
-              PKG, "DatabaseLookup.ERROR0001.FieldRequired5.Exception" )
-              + meta.getTableKeyField()[ i ]
-              + BaseMessages.getString( PKG, "DatabaseLookup.ERROR0001.FieldRequired6.Exception" ) );
-          }
-        }
-        for ( int i = 0; i < meta.getReturnValueField().length; i++ ) {
-          ValueMetaInterface returnValueMeta = fields.searchValueMeta( meta.getReturnValueField()[ i ] );
-          if ( returnValueMeta != null ) {
-            ValueMetaInterface v = data.outputRowMeta.getValueMeta( getInputRowMeta().size() + i );
-            if ( v.getType() != returnValueMeta.getType() ) {
-              ValueMetaInterface clone = returnValueMeta.clone();
-              clone.setName( v.getName() );
-              data.outputRowMeta.setValueMeta( getInputRowMeta().size() + i, clone );
-            }
-          }
-        }
-      } else {
-        throw new KettleStepException( BaseMessages.getString(
-          PKG, "DatabaseLookup.ERROR0002.UnableToDetermineFieldsOfTable" )
-          + schemaTable + "]" );
-      }
-
-      // Count the number of values in the lookup as well as the metadata to send along with it.
-      //
-      data.lookupMeta = new RowMeta();
-
-      for ( int i = 0; i < meta.getStreamKeyField1().length; i++ ) {
-        if ( data.keynrs[i] >= 0 ) {
-          ValueMetaInterface inputValueMeta = getInputRowMeta().getValueMeta( data.keynrs[i] );
-
-          // Try to convert type if needed in a clone, we don't want to
-          // change the type in the original row
-          //
-          ValueMetaInterface value = ValueMetaFactory.cloneValueMeta( inputValueMeta, data.keytypes[i] );
-
-          data.lookupMeta.addValueMeta( value );
-        }
-        if ( data.keynrs2[i] >= 0 ) {
-          ValueMetaInterface inputValueMeta = getInputRowMeta().getValueMeta( data.keynrs2[i] );
-
-          // Try to convert type if needed in a clone, we don't want to
-          // change the type in the original row
-          //
-          ValueMetaInterface value = ValueMetaFactory.cloneValueMeta( inputValueMeta, data.keytypes[i] );
-
-          data.lookupMeta.addValueMeta( value );
-        }
-      }
-
-      // We also want to know the metadata of the return values beforehand (null handling)
-      data.returnMeta = new RowMeta();
-
-      for ( int i = 0; i < meta.getReturnValueField().length; i++ ) {
-        ValueMetaInterface v = data.outputRowMeta.getValueMeta( getInputRowMeta().size() + i ).clone();
-        data.returnMeta.addValueMeta( v );
-      }
+      initReturnMeta();
 
       // If the user selected to load all data into the cache at startup, that's what we do now...
       //
