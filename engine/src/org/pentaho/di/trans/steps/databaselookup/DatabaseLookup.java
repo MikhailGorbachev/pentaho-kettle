@@ -140,7 +140,8 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
         }
 
         data.db.setValuesLookup( data.lookupMeta, lookupRow );
-        add = data.db.getLookup( meta.isFailingOnMultipleResults() );
+        // PDI-8373
+        add = data.db.getLookup( meta.isFailingOnMultipleResults(), meta.getDatabaseMeta().isMySQLVariant() );
         cache_now = true;
       }
     }
@@ -189,7 +190,9 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
           ValueMetaInterface returned = data.db.getReturnRowMeta().getValueMeta( i );
           ValueMetaInterface expected = data.returnMeta.getValueMeta( i );
 
-          if ( returned != null && types[i] > 0 && types[i] != returned.getType() ) {
+          if ( returned != null && types[i] > 0 &&
+            (types[i] != returned.getType() ||
+              returned.getType() == ValueMetaInterface.TYPE_STRING && returned.getStorageType() == ValueMetaInterface.STORAGE_TYPE_BINARY_STRING) ) {
             // Set the type to the default return type
             add[i] = expected.convertData( returned, add[i] );
           }
@@ -441,8 +444,19 @@ public class DatabaseLookup extends BaseStep implements StepInterface {
           } else {
             throw new KettleStepException( BaseMessages.getString(
               PKG, "DatabaseLookup.ERROR0001.FieldRequired5.Exception" )
-              + meta.getTableKeyField()[i]
+              + meta.getTableKeyField()[ i ]
               + BaseMessages.getString( PKG, "DatabaseLookup.ERROR0001.FieldRequired6.Exception" ) );
+          }
+        }
+        for ( int i = 0; i < meta.getReturnValueField().length; i++ ) {
+          ValueMetaInterface returnValueMeta = fields.searchValueMeta( meta.getReturnValueField()[ i ] );
+          if ( returnValueMeta != null ) {
+            ValueMetaInterface v = data.outputRowMeta.getValueMeta( getInputRowMeta().size() + i );
+            if ( v.getType() != returnValueMeta.getType() ) {
+              ValueMetaInterface clone = returnValueMeta.clone();
+              clone.setName( v.getName() );
+              data.outputRowMeta.setValueMeta( getInputRowMeta().size() + i, clone );
+            }
           }
         }
       } else {

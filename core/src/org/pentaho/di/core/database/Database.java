@@ -2710,8 +2710,8 @@ public class Database implements VariableSpace, LoggingObjectInterface {
     return getLookup( prepStatementLookup, false );
   }
 
-  public Object[] getLookup( boolean failOnMultipleResults ) throws KettleDatabaseException {
-    return getLookup( prepStatementLookup, failOnMultipleResults );
+  public Object[] getLookup( boolean failOnMultipleResults, boolean lazyConversion ) throws KettleDatabaseException {
+    return getLookup( prepStatementLookup, failOnMultipleResults, lazyConversion );
   }
 
   public Object[] getLookup( PreparedStatement ps ) throws KettleDatabaseException {
@@ -2722,12 +2722,17 @@ public class Database implements VariableSpace, LoggingObjectInterface {
   }
 
   public Object[] getLookup( PreparedStatement ps, boolean failOnMultipleResults ) throws KettleDatabaseException {
+    return getLookup( ps, failOnMultipleResults, false );
+  }
+
+  public Object[] getLookup( PreparedStatement ps, boolean failOnMultipleResults, boolean lazyConversion )
+    throws KettleDatabaseException {
     ResultSet res = null;
     try {
       log.snap( Metrics.METRIC_DATABASE_GET_LOOKUP_START, databaseMeta.getName() );
       res = ps.executeQuery();
 
-      Object[] ret = getRow( res );
+      Object[] ret = getRow( res, lazyConversion );
 
       if ( failOnMultipleResults ) {
         if ( ret != null && res.next() ) {
