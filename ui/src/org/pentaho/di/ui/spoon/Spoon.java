@@ -36,7 +36,6 @@ import java.text.SimpleDateFormat;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Collections;
-import java.util.Comparator;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.Hashtable;
@@ -122,6 +121,7 @@ import org.eclipse.swt.widgets.ToolBar;
 import org.eclipse.swt.widgets.ToolItem;
 import org.eclipse.swt.widgets.Tree;
 import org.eclipse.swt.widgets.TreeItem;
+import org.pentaho.di.base.AbstractMeta;
 import org.pentaho.di.cluster.ClusterSchema;
 import org.pentaho.di.cluster.SlaveServer;
 import org.pentaho.di.core.AddUndoPositionInterface;
@@ -5948,27 +5948,15 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
     return string.toUpperCase().contains( filter.toUpperCase() );
   }
 
-  /**
-   * Refresh the object selection tree (on the left of the screen)
-   */
-  public void refreshTree() {
-    if ( shell.isDisposed() ) {
-      return;
-    }
-
-    if ( !viewSelected ) {
-      return; // Nothing to see here, move along...
-    }
-
-    if ( selectionTree == null || selectionTree.isDisposed() ) {
-      // //////////////////////////////////////////////////////////////////////////////////////////////////
-      //
-      // Now set up the transformation/job tree
-      //
-      selectionTree = new Tree( variableComposite, SWT.SINGLE );
-      props.setLook( selectionTree );
-      selectionTree.setLayout( new FillLayout() );
-      addDefaultKeyListeners( selectionTree );
+  private void createSelectionTree() {
+    // //////////////////////////////////////////////////////////////////////////////////////////////////
+    //
+    // Now set up the transformation/job tree
+    //
+    selectionTree = new Tree( variableComposite, SWT.SINGLE );
+    props.setLook( selectionTree );
+    selectionTree.setLayout( new FillLayout() );
+    addDefaultKeyListeners( selectionTree );
 
       /*
        * ExpandItem treeItem = new ExpandItem(mainExpandBar, SWT.NONE); treeItem.setControl(selectionTree);
@@ -5976,28 +5964,39 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
        * GUIResource.getInstance().getImageLogoSmall(), STRING_SPOON_MAIN_TREE, 0, true);
        */
 
-      // Add a tree memory as well...
-      TreeMemory.addTreeListener( selectionTree, STRING_SPOON_MAIN_TREE );
+    // Add a tree memory as well...
+    TreeMemory.addTreeListener( selectionTree, STRING_SPOON_MAIN_TREE );
 
-      selectionTree.addMenuDetectListener( new MenuDetectListener() {
-        public void menuDetected( MenuDetectEvent e ) {
-          setMenu( selectionTree );
-        }
-      } );
+    selectionTree.addMenuDetectListener( new MenuDetectListener() {
+      public void menuDetected( MenuDetectEvent e ) {
+        setMenu( selectionTree );
+      }
+    } );
 
-      selectionTree.addSelectionListener( new SelectionAdapter() {
-        public void widgetSelected( SelectionEvent e ) {
-          showSelection();
-        }
-      } );
-      selectionTree.addSelectionListener( new SelectionAdapter() {
-        public void widgetDefaultSelected( SelectionEvent e ) {
-          doubleClickedInTree( selectionTree );
-        }
-      } );
+    selectionTree.addSelectionListener( new SelectionAdapter() {
+      public void widgetSelected( SelectionEvent e ) {
+        showSelection();
+      }
 
-      // Set a listener on the tree
-      addDragSourceToTree( selectionTree );
+      public void widgetDefaultSelected( SelectionEvent e ) {
+        doubleClickedInTree( selectionTree );
+      }
+    } );
+
+    // Set a listener on the tree
+    addDragSourceToTree( selectionTree );
+  }
+
+  /**
+   * Refresh the object selection tree (on the left of the screen)
+   */
+  public void refreshTree() {
+    if ( shell.isDisposed() || !viewSelected ) {
+      return;
+    }
+
+    if ( selectionTree == null || selectionTree.isDisposed() ) {
+      createSelectionTree();
     }
 
     GUIResource guiResource = GUIResource.getInstance();
@@ -6058,171 +6057,18 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
               TreeMemory.getInstance().storeExpanded( STRING_SPOON_MAIN_TREE, tiTransName, true );
             }
 
-            // /////////////////////////////////////////////////////
-            //
-            // Now add the database connections
-            //
-            TreeItem tiDbTitle = new TreeItem( tiTransName, SWT.NONE );
-            tiDbTitle.setText( STRING_CONNECTIONS );
-            tiDbTitle.setImage( guiResource.getImageBol() );
+            refreshDbConnectionsSubtree( tiTransName, transMeta, guiResource );
 
-            String[] dbNames = new String[transMeta.nrDatabases()];
-            for ( int i = 0; i < dbNames.length; i++ ) {
-              dbNames[i] = transMeta.getDatabase( i ).getName();
-            }
-            Arrays.sort( dbNames, new Comparator<String>() {
-              public int compare( String o1, String o2 ) {
-                return o1.compareToIgnoreCase( o2 );
-              }
-            } );
+            refreshStepsSubtree( tiTransName, transMeta, guiResource );
 
-            // Draw the connections themselves below it.
-            for ( String dbName : dbNames ) {
-              DatabaseMeta databaseMeta = transMeta.findDatabase( dbName );
+            refreshHopsSubtree( tiTransName, transMeta, guiResource );
 
-              if ( !filterMatch( dbName ) ) {
-                continue;
-              }
+            refreshPartitionsSubtree( tiTransName, transMeta, guiResource );
 
-              TreeItem tiDb = new TreeItem( tiDbTitle, SWT.NONE );
-              tiDb.setText( databaseMeta.getDisplayName() );
-              if ( databaseMeta.isShared() ) {
-                tiDb.setFont( guiResource.getFontBold() );
-              }
-              tiDb.setImage( guiResource.getImageConnection() );
-            }
+            refreshSlavesSubtree( tiTransName, transMeta, guiResource );
 
-            // /////////////////////////////////////////////////////
-            //
-            // The steps
-            //
-            TreeItem tiStepTitle = new TreeItem( tiTransName, SWT.NONE );
-            tiStepTitle.setText( STRING_STEPS );
-            tiStepTitle.setImage( guiResource.getImageBol() );
+            refreshClustersSubtree( tiTransName, transMeta, guiResource );
 
-            // Put the steps below it.
-            for ( int i = 0; i < transMeta.nrSteps(); i++ ) {
-              StepMeta stepMeta = transMeta.getStep( i );
-              PluginInterface stepPlugin =
-                PluginRegistry.getInstance().findPluginWithId( StepPluginType.class, stepMeta.getStepID() );
-
-              if ( !filterMatch( stepMeta.getName() ) && !filterMatch( stepMeta.getName() ) ) {
-                continue;
-              }
-
-              TreeItem tiStep = new TreeItem( tiStepTitle, SWT.NONE );
-              tiStep.setText( stepMeta.getName() );
-              if ( stepMeta.isShared() ) {
-                tiStep.setFont( guiResource.getFontBold() );
-              }
-              if ( !stepMeta.isDrawn() ) {
-                tiStep.setForeground( guiResource.getColorDarkGray() );
-              }
-              Image stepIcon = guiResource.getImagesStepsSmall().get( stepPlugin.getIds()[0] );
-              if ( stepIcon == null ) {
-                stepIcon = guiResource.getImageBol();
-              }
-              tiStep.setImage( stepIcon );
-            }
-
-            // /////////////////////////////////////////////////////
-            //
-            // The hops
-            //
-            TreeItem tiHopTitle = new TreeItem( tiTransName, SWT.NONE );
-            tiHopTitle.setText( STRING_HOPS );
-            tiHopTitle.setImage( guiResource.getImageBol() );
-
-            // Put the steps below it.
-            for ( int i = 0; i < transMeta.nrTransHops(); i++ ) {
-              TransHopMeta hopMeta = transMeta.getTransHop( i );
-
-              if ( !filterMatch( hopMeta.toString() ) ) {
-                continue;
-              }
-
-              TreeItem tiHop = new TreeItem( tiHopTitle, SWT.NONE );
-              tiHop.setText( hopMeta.toString() );
-              if ( hopMeta.isEnabled() ) {
-                tiHop.setImage( guiResource.getImageHop() );
-              } else {
-                tiHop.setImage( guiResource.getImageDisabledHop() );
-              }
-            }
-
-            // /////////////////////////////////////////////////////
-            //
-            // The partitions
-            //
-            TreeItem tiPartitionTitle = new TreeItem( tiTransName, SWT.NONE );
-            tiPartitionTitle.setText( STRING_PARTITIONS );
-            tiPartitionTitle.setImage( guiResource.getImageBol() );
-
-            // Put the steps below it.
-            for ( int i = 0; i < transMeta.getPartitionSchemas().size(); i++ ) {
-              PartitionSchema partitionSchema = transMeta.getPartitionSchemas().get( i );
-              if ( !filterMatch( partitionSchema.getName() ) ) {
-                continue;
-              }
-              TreeItem tiPartition = new TreeItem( tiPartitionTitle, SWT.NONE );
-              tiPartition.setText( partitionSchema.getName() );
-              tiPartition.setImage( guiResource.getImageFolderConnections() );
-              if ( partitionSchema.isShared() ) {
-                tiPartition.setFont( guiResource.getFontBold() );
-              }
-            }
-
-            // /////////////////////////////////////////////////////
-            //
-            // The slaves
-            //
-            TreeItem tiSlaveTitle = new TreeItem( tiTransName, SWT.NONE );
-            tiSlaveTitle.setText( STRING_SLAVES );
-            tiSlaveTitle.setImage( guiResource.getImageBol() );
-
-            // Put the slaves below it.
-            //
-            String[] slaveNames = transMeta.getSlaveServerNames();
-            Arrays.sort( slaveNames, new Comparator<String>() {
-              public int compare( String o1, String o2 ) {
-                return o1.compareToIgnoreCase( o2 );
-              }
-            } );
-
-            for ( String slaveName : slaveNames ) {
-              SlaveServer slaveServer = transMeta.findSlaveServer( slaveName );
-              if ( !filterMatch( slaveServer.getName() ) ) {
-                continue;
-              }
-              TreeItem tiSlave = new TreeItem( tiSlaveTitle, SWT.NONE );
-              tiSlave.setText( slaveServer.getName() );
-              tiSlave.setImage( guiResource.getImageSlave() );
-              if ( slaveServer.isShared() ) {
-                tiSlave.setFont( guiResource.getFontBold() );
-              }
-            }
-
-            // /////////////////////////////////////////////////////
-            //
-            // The clusters
-            //
-            TreeItem tiClusterTitle = new TreeItem( tiTransName, SWT.NONE );
-            tiClusterTitle.setText( STRING_CLUSTERS );
-            tiClusterTitle.setImage( guiResource.getImageBol() );
-
-            // Put the steps below it.
-            for ( int i = 0; i < transMeta.getClusterSchemas().size(); i++ ) {
-              ClusterSchema clusterSchema = transMeta.getClusterSchemas().get( i );
-              if ( !filterMatch( clusterSchema.getName() ) ) {
-                continue;
-              }
-              TreeItem tiCluster = new TreeItem( tiClusterTitle, SWT.NONE );
-              tiCluster.setText( clusterSchema.toString() );
-              tiCluster.setImage( guiResource.getImageCluster() );
-              if ( clusterSchema.isShared() ) {
-                tiCluster.setFont( guiResource.getFontBold() );
-              }
-            }
           }
         }
       }
@@ -6267,105 +6113,12 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
               TreeMemory.getInstance().storeExpanded( STRING_SPOON_MAIN_TREE, tiJobName, true );
             }
 
-            // /////////////////////////////////////////////////////
-            //
-            // Now add the database connections
-            //
-            TreeItem tiDbTitle = new TreeItem( tiJobName, SWT.NONE );
-            tiDbTitle.setText( STRING_CONNECTIONS );
-            tiDbTitle.setImage( guiResource.getImageBol() );
+            refreshDbConnectionsSubtree( tiJobName, jobMeta, guiResource );
 
-            String[] dbNames = new String[jobMeta.nrDatabases()];
-            for ( int i = 0; i < dbNames.length; i++ ) {
-              dbNames[i] = jobMeta.getDatabase( i ).getName();
-            }
-            Arrays.sort( dbNames, new Comparator<String>() {
-              public int compare( String o1, String o2 ) {
-                return o1.compareToIgnoreCase( o2 );
-              }
-            } );
+            refreshJobEntriesSubtree( tiJobName, jobMeta, guiResource );
 
-            // Draw the connections themselves below it.
-            for ( String dbName : dbNames ) {
-              DatabaseMeta databaseMeta = jobMeta.findDatabase( dbName );
-              if ( !filterMatch( databaseMeta.getName() ) ) {
-                continue;
-              }
-              TreeItem tiDb = new TreeItem( tiDbTitle, SWT.NONE );
-              tiDb.setText( databaseMeta.getDisplayName() );
-              if ( databaseMeta.isShared() ) {
-                tiDb.setFont( guiResource.getFontBold() );
-              }
-              tiDb.setImage( guiResource.getImageConnection() );
-            }
+            refreshSlavesSubtree( tiJobName, jobMeta, guiResource );
 
-            // /////////////////////////////////////////////////////
-            //
-            // The job entries
-            //
-            TreeItem tiJobEntriesTitle = new TreeItem( tiJobName, SWT.NONE );
-            tiJobEntriesTitle.setText( STRING_JOB_ENTRIES );
-            tiJobEntriesTitle.setImage( guiResource.getImageBol() );
-
-            // Put the job entries below it.
-            //
-            for ( int i = 0; i < jobMeta.nrJobEntries(); i++ ) {
-              JobEntryCopy jobEntry = jobMeta.getJobEntry( i );
-
-              if ( !filterMatch( jobEntry.getName() ) && !filterMatch( jobEntry.getDescription() ) ) {
-                continue;
-              }
-
-              TreeItem tiJobEntry = ConstUI.findTreeItem( tiJobEntriesTitle, jobEntry.getName() );
-              if ( tiJobEntry != null ) {
-                continue; // only show it once
-              }
-
-              tiJobEntry = new TreeItem( tiJobEntriesTitle, SWT.NONE );
-              tiJobEntry.setText( jobEntry.getName() );
-              // if (jobEntry.isShared())
-              // tiStep.setFont(guiResource.getFontBold()); TODO:
-              // allow job entries to be shared as well...
-              if ( jobEntry.isStart() ) {
-                tiJobEntry.setImage( GUIResource.getInstance().getImageStart() );
-              } else if ( jobEntry.isDummy() ) {
-                tiJobEntry.setImage( GUIResource.getInstance().getImageDummy() );
-              } else {
-                String key = jobEntry.getEntry().getPluginId();
-                Image image = GUIResource.getInstance().getImagesJobentriesSmall().get( key );
-                tiJobEntry.setImage( image );
-              }
-            }
-
-            // /////////////////////////////////////////////////////
-            //
-            // The slaves
-            //
-            TreeItem tiSlaveTitle = new TreeItem( tiJobName, SWT.NONE );
-            tiSlaveTitle.setText( STRING_SLAVES );
-            tiSlaveTitle.setImage( guiResource.getImageBol() );
-
-            // Put the slaves below it.
-            //
-            String[] slaveNames = jobMeta.getSlaveServerNames();
-            Arrays.sort( slaveNames, new Comparator<String>() {
-              public int compare( String o1, String o2 ) {
-                return o1.compareToIgnoreCase( o2 );
-              }
-            } );
-
-            for ( String slaveName : slaveNames ) {
-              SlaveServer slaveServer = jobMeta.findSlaveServer( slaveName );
-              if ( !filterMatch( slaveServer.getName() ) ) {
-                continue;
-              }
-              TreeItem tiSlave = new TreeItem( tiSlaveTitle, SWT.NONE );
-              tiSlave.setText( slaveServer.getName() );
-              tiSlave.setImage( guiResource.getImageSlave() );
-              if ( slaveServer.isShared() ) {
-                tiSlave.setFont( guiResource.getFontBold() );
-              }
-            }
           }
         }
       }
@@ -6380,6 +6133,268 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
     selectionTree.layout();
     variableComposite.layout( true, true );
     setShellText();
+  }
+
+  private String[] pickupDbConnections( AbstractMeta transMeta ) throws KettleException {
+    return ( rep == null ) ? transMeta.getDatabaseNames() : rep.getDatabaseNames( false );
+  }
+
+  private DatabaseMeta findDatabase( List<? extends DatabaseMeta> dbs, String dbName ) {
+    for ( DatabaseMeta meta : dbs ) {
+      if ( meta.getName().equalsIgnoreCase( dbName ) || meta.getDisplayName().equalsIgnoreCase( dbName ) ) {
+        return meta;
+      }
+    }
+    return null;
+  }
+
+  private void refreshDbConnectionsSubtree( TreeItem tiRootName, AbstractMeta meta, GUIResource guiResource ) {
+    TreeItem tiDbTitle = new TreeItem( tiRootName, SWT.NONE );
+    tiDbTitle.setText( STRING_CONNECTIONS );
+    tiDbTitle.setImage( guiResource.getImageBol() );
+
+    String[] dbNames;
+    List<DatabaseMeta> dbs;
+    try {
+      dbNames = pickupDbConnections( meta );
+
+      if ( dbNames.length == 0 ) {
+        return;
+      }
+
+      if ( rep == null ) {
+        dbs = meta.getDatabases();
+      } else {
+        dbs = rep.readDatabases();
+        for ( int i = 0; i < dbNames.length; i++ ) {
+          String dbName = dbNames[ i ];
+          dbs.get( i ).setName( dbName );
+        }
+      }
+    } catch ( KettleException e ) {
+      new ErrorDialog( shell,
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.Title" ),
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.ErrorFetchingFromRepo.DbConnections" ),
+        e
+      );
+
+      return;
+    }
+
+    Arrays.sort( dbNames, String.CASE_INSENSITIVE_ORDER );
+
+    for ( String dbName : dbNames ) {
+      if ( !filterMatch( dbName ) ) {
+        continue;
+      }
+
+      DatabaseMeta databaseMeta = findDatabase( dbs, dbName );
+
+      TreeItem tiDb = new TreeItem( tiDbTitle, SWT.NONE );
+      tiDb.setText( databaseMeta.getDisplayName() );
+      if ( databaseMeta.isShared() ) {
+        tiDb.setFont( guiResource.getFontBold() );
+      }
+      tiDb.setImage( guiResource.getImageConnection() );
+    }
+  }
+
+  private void refreshStepsSubtree( TreeItem tiRootName, TransMeta meta, GUIResource guiResource ) {
+    TreeItem tiStepTitle = new TreeItem( tiRootName, SWT.NONE );
+    tiStepTitle.setText( STRING_STEPS );
+    tiStepTitle.setImage( guiResource.getImageBol() );
+
+    // Put the steps below it.
+    for ( int i = 0; i < meta.nrSteps(); i++ ) {
+      StepMeta stepMeta = meta.getStep( i );
+      PluginInterface stepPlugin =
+        PluginRegistry.getInstance().findPluginWithId( StepPluginType.class, stepMeta.getStepID() );
+
+      if ( !filterMatch( stepMeta.getName() ) ) {
+        continue;
+      }
+
+      TreeItem tiStep = new TreeItem( tiStepTitle, SWT.NONE );
+      tiStep.setText( stepMeta.getName() );
+      if ( stepMeta.isShared() ) {
+        tiStep.setFont( guiResource.getFontBold() );
+      }
+      if ( !stepMeta.isDrawn() ) {
+        tiStep.setForeground( guiResource.getColorDarkGray() );
+      }
+      Image stepIcon = guiResource.getImagesStepsSmall().get( stepPlugin.getIds()[0] );
+      if ( stepIcon == null ) {
+        stepIcon = guiResource.getImageBol();
+      }
+      tiStep.setImage( stepIcon );
+    }
+  }
+
+  private void refreshHopsSubtree( TreeItem tiTransName, TransMeta transMeta, GUIResource guiResource ) {
+    TreeItem tiHopTitle = new TreeItem( tiTransName, SWT.NONE );
+    tiHopTitle.setText( STRING_HOPS );
+    tiHopTitle.setImage( guiResource.getImageBol() );
+
+    // Put the steps below it.
+    for ( int i = 0; i < transMeta.nrTransHops(); i++ ) {
+      TransHopMeta hopMeta = transMeta.getTransHop( i );
+
+      if ( !filterMatch( hopMeta.toString() ) ) {
+        continue;
+      }
+
+      TreeItem tiHop = new TreeItem( tiHopTitle, SWT.NONE );
+      tiHop.setText( hopMeta.toString() );
+      if ( hopMeta.isEnabled() ) {
+        tiHop.setImage( guiResource.getImageHop() );
+      } else {
+        tiHop.setImage( guiResource.getImageDisabledHop() );
+      }
+    }
+  }
+
+
+  private List<PartitionSchema> pickupPartitionSchemas( TransMeta transMeta ) throws KettleException {
+    if ( rep != null ) {
+      ObjectId[] ids = rep.getPartitionSchemaIDs( false );
+      List<PartitionSchema> result = new ArrayList<PartitionSchema>( ids.length );
+      for ( ObjectId id : ids ) {
+        PartitionSchema schema = rep.loadPartitionSchema( id, null );
+        result.add( schema );
+      }
+      return result;
+    }
+
+    return transMeta.getPartitionSchemas();
+  }
+
+
+  private void refreshPartitionsSubtree( TreeItem tiTransName, TransMeta transMeta, GUIResource guiResource ) {
+    TreeItem tiPartitionTitle = new TreeItem( tiTransName, SWT.NONE );
+    tiPartitionTitle.setText( STRING_PARTITIONS );
+    tiPartitionTitle.setImage( guiResource.getImageBol() );
+
+    List<PartitionSchema> partitionSchemas;
+    try {
+      partitionSchemas = pickupPartitionSchemas( transMeta );
+    } catch ( KettleException e ) {
+      new ErrorDialog( shell,
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.Title" ),
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.ErrorFetchingFromRepo.PartitioningSchemas" ),
+        e
+      );
+
+      return;
+    }
+
+    // Put the steps below it.
+    for ( PartitionSchema partitionSchema : partitionSchemas ) {
+      if ( !filterMatch( partitionSchema.getName() ) ) {
+        continue;
+      }
+      TreeItem tiPartition = new TreeItem( tiPartitionTitle, SWT.NONE );
+      tiPartition.setText( partitionSchema.getName() );
+      tiPartition.setImage( guiResource.getImageFolderConnections() );
+      if ( partitionSchema.isShared() ) {
+        tiPartition.setFont( guiResource.getFontBold() );
+      }
+    }
+  }
+
+  private List<SlaveServer> pickupSlaveServers( AbstractMeta transMeta ) throws KettleException {
+    return ( rep == null ) ? transMeta.getSlaveServers() : rep.getSlaveServers();
+  }
+
+
+  private void refreshSlavesSubtree( TreeItem tiRootName, AbstractMeta meta, GUIResource guiResource ) {
+    TreeItem tiSlaveTitle = new TreeItem( tiRootName, SWT.NONE );
+    tiSlaveTitle.setText( STRING_SLAVES );
+    tiSlaveTitle.setImage( guiResource.getImageBol() );
+
+    List<SlaveServer> servers;
+    try {
+      servers = pickupSlaveServers( meta );
+    } catch ( KettleException e ) {
+      new ErrorDialog( shell,
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.Title" ),
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.ErrorFetchingFromRepo.SlaveServers" ),
+        e
+      );
+
+      return;
+    }
+
+    String[] slaveNames = SlaveServer.getSlaveServerNames( servers );
+    Arrays.sort( slaveNames, String.CASE_INSENSITIVE_ORDER );
+
+    for ( String slaveName : slaveNames ) {
+      if ( !filterMatch( slaveName ) ) {
+        continue;
+      }
+
+      SlaveServer slaveServer = SlaveServer.findSlaveServer( servers, slaveName );
+
+      TreeItem tiSlave = new TreeItem( tiSlaveTitle, SWT.NONE );
+      tiSlave.setText( slaveServer.getName() );
+      tiSlave.setImage( guiResource.getImageSlave() );
+      if ( slaveServer.isShared() ) {
+        tiSlave.setFont( guiResource.getFontBold() );
+      }
+    }
+  }
+
+  private void refreshClustersSubtree( TreeItem tiTransName, TransMeta transMeta, GUIResource guiResource ) {
+    TreeItem tiClusterTitle = new TreeItem( tiTransName, SWT.NONE );
+    tiClusterTitle.setText( STRING_CLUSTERS );
+    tiClusterTitle.setImage( guiResource.getImageBol() );
+
+    // Put the steps below it.
+    for ( ClusterSchema clusterSchema : transMeta.getClusterSchemas() ) {
+      if ( !filterMatch( clusterSchema.getName() ) ) {
+        continue;
+      }
+      TreeItem tiCluster = new TreeItem( tiClusterTitle, SWT.NONE );
+      tiCluster.setText( clusterSchema.toString() );
+      tiCluster.setImage( guiResource.getImageCluster() );
+      if ( clusterSchema.isShared() ) {
+        tiCluster.setFont( guiResource.getFontBold() );
+      }
+    }
+  }
+
+
+  private void refreshJobEntriesSubtree( TreeItem tiJobName, JobMeta jobMeta, GUIResource guiResource ) {
+    TreeItem tiJobEntriesTitle = new TreeItem( tiJobName, SWT.NONE );
+    tiJobEntriesTitle.setText( STRING_JOB_ENTRIES );
+    tiJobEntriesTitle.setImage( guiResource.getImageBol() );
+
+    for ( int i = 0; i < jobMeta.nrJobEntries(); i++ ) {
+      JobEntryCopy jobEntry = jobMeta.getJobEntry( i );
+
+      if ( !filterMatch( jobEntry.getName() ) && !filterMatch( jobEntry.getDescription() ) ) {
+        continue;
+      }
+
+      TreeItem tiJobEntry = ConstUI.findTreeItem( tiJobEntriesTitle, jobEntry.getName() );
+      if ( tiJobEntry != null ) {
+        continue; // only show it once
+      }
+
+      tiJobEntry = new TreeItem( tiJobEntriesTitle, SWT.NONE );
+      tiJobEntry.setText( jobEntry.getName() );
+      // if (jobEntry.isShared())
+      // tiStep.setFont(guiResource.getFontBold()); TODO:
+      // allow job entries to be shared as well...
+      if ( jobEntry.isStart() ) {
+        tiJobEntry.setImage( GUIResource.getInstance().getImageStart() );
+      } else if ( jobEntry.isDummy() ) {
+        tiJobEntry.setImage( GUIResource.getInstance().getImageDummy() );
+      } else {
+        String key = jobEntry.getEntry().getPluginId();
+        Image image = GUIResource.getInstance().getImagesJobentriesSmall().get( key );
+        tiJobEntry.setImage( image );
+      }
+    }
   }
 
   public String getActiveTabText() {
@@ -8047,11 +8062,27 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
     }
   }
 
+  private String[] pickupPartitionSchemaNames( TransMeta transMeta ) throws KettleException {
+    return ( rep == null ) ? transMeta.getPartitionSchemasNames() : rep.getPartitionSchemaNames( false );
+  }
+
   public void editPartitioning( TransMeta transMeta, StepMeta stepMeta ) {
 
     // Before we start, check if there are any partition schemas defined...
     //
-    String[] schemaNames = transMeta.getPartitionSchemasNames();
+    String[] schemaNames;
+    try {
+      schemaNames = pickupPartitionSchemaNames( transMeta );
+    } catch ( KettleException e ) {
+      new ErrorDialog( shell,
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.Title" ),
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.ErrorFetchingFromRepo.PartitioningSchemas" ),
+        e
+      );
+
+      return;
+    }
+
     if ( schemaNames.length == 0 ) {
       MessageBox box = new MessageBox( shell, SWT.ICON_ERROR | SWT.OK );
       box.setText( "Create a partition schema" );
@@ -8167,28 +8198,47 @@ public class Spoon extends ApplicationWindow implements AddUndoPositionInterface
    *          The step to set the clustering schema for.
    */
   public void editClustering( TransMeta transMeta, StepMeta stepMeta ) {
-    List<StepMeta> stepMetas = new ArrayList<StepMeta>();
-    stepMetas.add( stepMeta );
-    editClustering( transMeta, stepMetas );
+    editClustering( transMeta, Collections.singletonList( stepMeta ) );
+  }
+
+
+  private String[] pickupClusterSchemas( TransMeta transMeta ) throws KettleException {
+    return ( rep == null ) ? transMeta.getClusterSchemaNames() : rep.getClusterNames( false );
   }
 
   /**
    * Select a clustering schema for this step.
    *
-   * @param stepMetas
-   *          The steps (at least one!) to set the clustering schema for.
+   * @param stepMetas The steps (at least one!) to set the clustering schema for.
    */
   public void editClustering( TransMeta transMeta, List<StepMeta> stepMetas ) {
+    String[] clusterSchemaNames;
+    try {
+      clusterSchemaNames = pickupClusterSchemas( transMeta );
+    } catch ( KettleException e ) {
+      new ErrorDialog( shell,
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.Title" ),
+        BaseMessages.getString( PKG, "Spoon.ErrorDialog.ErrorFetchingFromRepo.ClusterSchemas" ),
+        e
+      );
+
+      return;
+    }
+
     StepMeta stepMeta = stepMetas.get( 0 );
     int idx = -1;
     if ( stepMeta.getClusterSchema() != null ) {
       idx = transMeta.getClusterSchemas().indexOf( stepMeta.getClusterSchema() );
     }
-    String[] clusterSchemaNames = transMeta.getClusterSchemaNames();
-    EnterSelectionDialog dialog =
-      new EnterSelectionDialog(
-        shell, clusterSchemaNames, "Cluster schema", "Select the cluster schema to use (cancel=clear)" );
+
+    EnterSelectionDialog dialog = new EnterSelectionDialog(
+      shell,
+      clusterSchemaNames,
+      BaseMessages.getString( PKG, "Spoon.Dialog.SelectClusteringSchema.Title" ),
+      BaseMessages.getString( PKG, "Spoon.Dialog.SelectClusteringSchema.Message" )
+    );
     String schemaName = dialog.open( idx );
+
     if ( schemaName == null ) {
       for ( StepMeta step : stepMetas ) {
         step.setClusterSchema( null );
