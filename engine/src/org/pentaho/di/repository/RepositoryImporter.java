@@ -39,11 +39,13 @@ import org.pentaho.di.core.ObjectLocationSpecificationMethod;
 import org.pentaho.di.core.Props;
 import org.pentaho.di.core.database.DatabaseMeta;
 import org.pentaho.di.core.exception.KettleException;
+import org.pentaho.di.core.exception.KettleXMLException;
 import org.pentaho.di.core.gui.HasOverwritePrompter;
 import org.pentaho.di.core.gui.OverwritePrompter;
 import org.pentaho.di.core.gui.SpoonFactory;
 import org.pentaho.di.core.logging.LogChannel;
 import org.pentaho.di.core.logging.LogChannelInterface;
+import org.pentaho.di.core.variables.VariableSpace;
 import org.pentaho.di.core.xml.XMLHandler;
 import org.pentaho.di.i18n.BaseMessages;
 import org.pentaho.di.imp.ImportRules;
@@ -565,16 +567,8 @@ public class RepositoryImporter implements IRepositoryImporter, CanLimitDirs {
             mappingMeta.setDirectoryPath( transDirOverride );
             continue;
           }
-          String newPath = baseDirectory.getPath();
-          String extraPath = mappingMeta.getDirectoryPath();
-          if ( newPath.endsWith( "/" ) && extraPath.startsWith( "/" ) ) {
-            newPath = newPath.substring( 0, newPath.length() - 1 );
-          } else if ( !newPath.endsWith( "/" ) && !extraPath.startsWith( "/" ) ) {
-            newPath += "/";
-          } else if ( extraPath.equals( "/" ) ) {
-            extraPath = "";
-          }
-          mappingMeta.setDirectoryPath( newPath + extraPath );
+          String mappingMetaPath = resolvePath( baseDirectory.getPath(), mappingMeta.getDirectoryPath(), transMeta );
+          mappingMeta.setDirectoryPath( mappingMetaPath );
         }
       }
     }
@@ -589,16 +583,8 @@ public class RepositoryImporter implements IRepositoryImporter, CanLimitDirs {
             entry.setDirectory( transDirOverride );
             continue;
           }
-          String newPath = baseDirectory.getPath();
-          String extraPath = Const.NVL( entry.getDirectory(), "/" );
-          if ( newPath.endsWith( "/" ) && extraPath.startsWith( "/" ) ) {
-            newPath = newPath.substring( 0, newPath.length() - 1 );
-          } else if ( !newPath.endsWith( "/" ) && !extraPath.startsWith( "/" ) ) {
-            newPath += "/";
-          } else if ( extraPath.equals( "/" ) ) {
-            extraPath = "";
-          }
-          entry.setDirectory( newPath + extraPath );
+          String entryPath = resolvePath( baseDirectory.getPath(), entry.getDirectory(), jobMeta );
+          entry.setDirectory( entryPath );
         }
       }
       if ( copy.isJob() ) {
@@ -608,19 +594,25 @@ public class RepositoryImporter implements IRepositoryImporter, CanLimitDirs {
             entry.setDirectory( jobDirOverride );
             continue;
           }
-          String newPath = baseDirectory.getPath();
-          String extraPath = Const.NVL( entry.getDirectory(), "/" );
-          if ( newPath.endsWith( "/" ) && extraPath.startsWith( "/" ) ) {
-            newPath = newPath.substring( 0, newPath.length() - 1 );
-          } else if ( !newPath.endsWith( "/" ) && !extraPath.startsWith( "/" ) ) {
-            newPath += "/";
-          } else if ( extraPath.equals( "/" ) ) {
-            extraPath = "";
-          }
-          entry.setDirectory( newPath + extraPath );
+          String entryPath = resolvePath( baseDirectory.getPath(), entry.getDirectory(), jobMeta );
+          entry.setDirectory( entryPath );
         }
       }
     }
+  }
+
+  private static String resolvePath( String baseDirectory, String directory, VariableSpace variableSpace ) {
+    String rootPath = baseDirectory;
+    String extraPath = Const.NVL( directory, "/" );
+    String realExtraPath = Const.NVL( variableSpace.environmentSubstitute( directory ), "/" );
+    if ( rootPath.endsWith( "/" ) && realExtraPath.startsWith( "/" ) ) {
+      rootPath = rootPath.substring( 0, rootPath.length() - 1 );
+    } else if ( !rootPath.endsWith( "/" ) && !realExtraPath.startsWith( "/" ) ) {
+      rootPath += "/";
+    } else if ( realExtraPath.equals( "/" ) ) {
+      extraPath = "";
+    }
+    return rootPath + extraPath;
   }
 
   protected void saveTransMeta( TransMeta transMeta ) throws KettleException {
@@ -738,7 +730,7 @@ public class RepositoryImporter implements IRepositoryImporter, CanLimitDirs {
   protected boolean importJob( Node jobnode, RepositoryImportFeedbackInterface feedback ) throws KettleException {
     // Load the job from the XML node.
     //
-    JobMeta jobMeta = new JobMeta( jobnode, null, false, SpoonFactory.getInstance() );
+    JobMeta jobMeta = createJobMetaForNode( jobnode );
     feedback.setLabel( BaseMessages.getString( PKG, "RepositoryImporter.ImportJob.Label",
         Integer.toString( jobNumber ), jobMeta.getName() ) );
     validateImportedElement( importRules, jobMeta );
@@ -806,6 +798,10 @@ public class RepositoryImporter implements IRepositoryImporter, CanLimitDirs {
       feedback.addLog( BaseMessages.getString( PKG, "RepositoryImporter.SkippedExistingJob.Log", jobMeta.getName() ) );
     }
     return true;
+  }
+
+  JobMeta createJobMetaForNode( Node jobnode ) throws KettleXMLException {
+    return new JobMeta( jobnode, null, false, SpoonFactory.getInstance() );
   }
 
   private int transformationNumber = 1;
