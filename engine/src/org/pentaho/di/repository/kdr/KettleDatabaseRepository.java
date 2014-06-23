@@ -323,7 +323,7 @@ public class KettleDatabaseRepository extends KettleDatabaseRepositoryBase {
     }
   }
 
-  public SharedObjects readJobMetaSharedObjects( JobMeta jobMeta ) throws KettleException {
+  public synchronized SharedObjects readJobMetaSharedObjects( JobMeta jobMeta ) throws KettleException {
     try {
       return jobDelegate.readSharedObjects( jobMeta );
     } finally {
@@ -459,7 +459,7 @@ public class KettleDatabaseRepository extends KettleDatabaseRepositoryBase {
    * @throws KettleException
    *           in case something goes wrong with database, connection, etc.
    */
-  public DatabaseMeta loadDatabaseMeta( ObjectId id_database, String versionName ) throws KettleException {
+  public synchronized DatabaseMeta loadDatabaseMeta( ObjectId id_database, String versionName ) throws KettleException {
     return databaseDelegate.loadDatabaseMeta( id_database );
   }
 
@@ -485,7 +485,7 @@ public class KettleDatabaseRepository extends KettleDatabaseRepositoryBase {
 
   // SlaveServer
 
-  public SlaveServer loadSlaveServer( ObjectId id_slave_server, String versionName ) throws KettleException {
+  public synchronized SlaveServer loadSlaveServer( ObjectId id_slave_server, String versionName ) throws KettleException {
     return slaveServerDelegate.loadSlaveServer( id_slave_server );
   }
 
